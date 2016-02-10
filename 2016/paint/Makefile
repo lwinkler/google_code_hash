@@ -7,4 +7,6 @@ simpleline: simpleline.cpp
 	g++ -g -O3 -Wextra -o simpleline simpleline.cpp -pthread --std=c++11 `pkg-config --libs opencv`
 
 clean:
+	rm main simpleline
+distclean: clean
 	rm -rf out_*

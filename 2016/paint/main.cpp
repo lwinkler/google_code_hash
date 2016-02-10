@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <list>
 #include <map>
 #include <pthread.h>
 #include <assert.h>
@@ -63,6 +64,12 @@ class ThreadPool {
 		bool stop;
 };
 
+struct Candidate
+{
+	string command;
+	Rect   rect;
+};
+
 
 /// Class representing our main test case
 class TestCase{
@@ -74,57 +81,199 @@ class TestCase{
 
 		// multi_array<char, 2>* pwall = nullptr;
 		Mat wall;
+		Mat painted;
 		vector<string> result;
 
+		void SelectCandidates();
+		bool PaintMaxCandidate();
+		void Erase();
+		inline int  Rate1(Candidate& can){return countNonZero(wall(can.rect) & (painted(can.rect) == 0));}
+		// inline int  Rate2(Candidate& can){return countNonZero(wall(can.rect) == 0);}
 
+		// Our heuristic
+		inline int  Rate(Candidate& can){
+			int val = Rate1(can); 
+			if(val == 0) 
+				return INT_MIN; 
+			else return val - 100 * countNonZero(wall(can.rect) == 0);
+		}
 
 	public:
 		TestCase() {}
 		~TestCase(){};
 		void doWork();
+		// Used to name the result file
+		string OutputFileName(){return to_string(result.size());}
 		friend ostream & operator << (ostream & os,TestCase &t);
 		friend istream & operator >> (istream & is,TestCase &t);
 
 	private:
 		bool started = false;
+		list<Candidate> candidates;
 };
 
-
-/// Implement here the main work of the test case
-void TestCase::doWork()
+void TestCase::SelectCandidates()
 {
-	Mat painted(wall.size(), wall.type());
-	painted.setTo(0);
 	Rect rect_mat(0, 0, wall.cols, wall.rows);
-
-	for(int s = (min(painted.rows, painted.cols) - 1) / 2 ; s >= 0 ; s--)
+	for(int s = (min(wall.rows, wall.cols) - 1) / 2 ; s >= 0 ; s--)
 	{
-		int area = (2*s+1) * (2*s+1);
-		for(int i = 0 + s ; i < painted.rows - s; i++)
+		cout << "s" << s << endl;
+		for(int i = 0 + s ; i < wall.rows - s; i++)
 		{
-			for(int j = 0 + s ; j < painted.cols - s; j++)
+			for(int j = 0 + s ; j < wall.cols - s; j++)
 			{
-				Rect rect(Point2i(j-s,i-s), Point2i(j+s + 1, i+s + 1));
-				// cout << rect << endl;
-				// cout << rect_mat << endl;
-				// cout << i << " " << j << " " << s << endl;
+				Candidate can;
+				can.rect = Rect(Point2i(j-s,i-s), Point2i(j+s + 1, i+s + 1));
 
-				assert((rect & rect_mat) == rect);
-
-				if(countNonZero(wall(rect)) == area && countNonZero(painted(rect)) != area)
+				if(Rate(can) > 0)
 				{
-					painted(rect).setTo(255);
 					stringstream ss;
 					ss << "PAINT_SQUARE " << i - 1 << " " << j - 1 << " " << s;
-					result.push_back(ss.str());
+					can.command = ss.str();
+					// assert((can.rect & rect_mat) == can.rect);
+					candidates.push_back(can);
 				}
 			}
 		}
 	}
 
+	cout << "Candidates sq " << candidates.size() << endl;
+
+	for (int r = 0; r < wall.rows; r++)
+	{
+		cout << "r" << r << endl;
+		for (int c = 0; c < wall.cols; c++)
+		{
+			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
+			for (int l = 2; l < wall.cols - c; l++)
+			{
+				Candidate can;
+				can.rect = rect;
+
+				if(Rate(can) > 0)
+				{
+					stringstream ss;
+					ss << "PAINT_LINE " << r << " " << c << " " << r + l << " " << c;
+					can.command = ss.str();
+					// assert((can.rect & rect_mat) == can.rect);
+					candidates.push_back(can);
+				}
+				rect.width++;
+			}
+		}
+	}
+
+	cout << "Candidates sq+li " << candidates.size() << endl;
+
+	for (int r = 0; r < wall.rows; r++)
+	{
+		cout << "r" << r << endl;
+		for (int c = 0; c < wall.cols; c++)
+		{
+			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
+			for (int l = 2; l < wall.rows - r; l++)
+			{
+				Candidate can;
+				can.rect = rect;
+
+				if(Rate(can) > 0)
+				{
+					stringstream ss;
+					ss << "PAINT_LINE " << r << " " << c << " " << r << " " << c + l;
+					can.command = ss.str();
+					// assert((can.rect & rect_mat) == can.rect);
+					candidates.push_back(can);
+				}
+				rect.height++;
+			}
+		}
+	}
+
+	cout << "Candidates sq+li " << candidates.size() << endl;
+}
+
+bool TestCase::PaintMaxCandidate()
+{
+	list<Candidate>::iterator itmax;
+	list<Candidate>::iterator it = candidates.begin();
+
+	int max = INT_MIN;
+	while(it != candidates.end())
+	{
+		int score = Rate(*it);
+		if(score == INT_MIN)
+		{
+			it = candidates.erase(it);
+			continue;
+		}
+		if(score > max)
+		{
+			max = score;
+			itmax = it;
+		}
+		it++;
+	}
+
+	cout << "candidates " << candidates.size() << " max " << max << endl;
+
+	if(max <= 0)
+		return false;
+
+	painted(itmax->rect).setTo(255);
+	candidates.erase(itmax);
+	return true;
+}
+
+void TestCase::Erase(){}
+
+/*
+void paintSquares(Mat& wall, Mat& painted, int s, int maxBlack, vector<string>& result, vector<string>& result2)
+{
+	int area = (2*s+1) * (2*s+1);
+	Rect rect_mat(0, 0, wall.cols, wall.rows);
+	for(int i = 0 + s ; i < painted.rows - s; i++)
+	{
+		for(int j = 0 + s ; j < painted.cols - s; j++)
+		{
+			Rect rect(Point2i(j-s,i-s), Point2i(j+s + 1, i+s + 1));
+			assert((rect & rect_mat) == rect);
+
+			if(countNonZero(wall(rect)) >= area - maxBlack && countNonZero(painted(rect)) != area)
+			{
+				painted(rect).setTo(255);
+				stringstream ss;
+				ss << "PAINT_SQUARE " << i - 1 << " " << j - 1 << " " << s;
+				result.push_back(ss.str());
+			}
+		}
+	}
+}
+*/
+
+/// Implement here the main work of the test case
+void TestCase::doWork()
+{
+	painted = Mat(wall.size(), wall.type());
+	painted.setTo(0);
+
+	/*
+	for(int s = (min(painted.rows, painted.cols) - 1) / 2 ; s >= 0 ; s--)
+	{
+		paintSquares(wall, painted, s, 0, result);
+	}
+
+	*/
 	namedWindow( "Wall", WINDOW_AUTOSIZE );
-	imshow("Wall", painted);
-	waitKey(0);
+
+	SelectCandidates();
+	bool ret = true;
+	while(ret)
+	{
+		ret = PaintMaxCandidate();
+		imshow("Wall", painted);
+		waitKey(0);
+	}
+	Erase();
 }
 
 /// Write the result to file
@@ -173,7 +322,7 @@ int main(int argc, char **argv){
 
 	string dirname = "out_" + timeStamp() + '/';
 	stringstream cmd;
-	cmd << "mkdir -p " << dirname << " && ln -s " << dirname << " out_latest";
+	cmd << "mkdir -p " << dirname << " && rm out_latest && ln -s " << dirname << " out_latest";
 	if(system(cmd.str().c_str()) != 0)
 	{
 		cout << "error while making " << dirname << endl;
@@ -201,34 +350,41 @@ int main(int argc, char **argv){
 	int max_threads = std::thread::hardware_concurrency();
 	if(argc > 2 && atoi(argv[2]) > 0)
 		max_threads =  atoi(argv[2]);
-	cout << "Create a pool of " << max_threads << " working threads" << endl;
-	ThreadPool pool(max_threads);
-	std::vector< std::future<string> > results;
 
-	for(auto& elem : tarr)
+	if(max_threads > 1)
 	{
-		results.emplace_back(
-			pool.enqueue([&elem]{
-				cout << "starting job" << endl;
-				elem->doWork();
-				stringstream ss;
-				ss<< /*"Case --> " <<*/ *elem <<endl;
-				return ss.str();
-			})
-		);
+		cout << "Create a pool of " << max_threads << " working threads" << endl;
+		std::vector< std::future<string> > results;
+		ThreadPool pool(max_threads);
+
+		for(auto& elem : tarr)
+		{
+			results.emplace_back(
+				pool.enqueue([&elem]{
+					cout << "starting job" << endl;
+					elem->doWork();
+					stringstream ss;
+					ss<< /*"Case --> " <<*/ *elem <<endl;
+					return ss.str();
+				})
+			);
+		}
+
+		for(auto && result: results)
+			std::cout << result.get() << ' ';
 	}
 
-	for(auto && result: results)
-		std::cout << result.get() << ' ';
 	std::cout << std::endl;
 
 	// Write down results
 	int j = 0;
 	for(auto& elem : tarr)
 	{
+		if(max_threads <= 1)
+			elem->doWork();
 		ofstream fout;
 		stringstream ss;
-		ss << dirname << filename << ".out";
+		ss << dirname << filename << "." << elem->OutputFileName() << ".out";
 		fout.open ( ss.str().c_str());
 		fout<< /*"Case #"<<(j+1)<<": "<<*/*elem<<endl;
 		j++;
