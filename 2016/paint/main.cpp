@@ -50,7 +50,11 @@ class TestCase{
 		~TestCase(){};
 		void doWork();
 		// Used to name the result file
-		string OutputFileName(){return to_string(result.size()) + ".K=" + to_string(K);}
+		string OutputFileName(){
+			stringstream ss;
+			ss << setfill('0') << setw(5) << result.size() << ".K=" << K;
+			return ss.str();
+		}
 		friend ostream & operator << (ostream & os,TestCase &t);
 		friend istream & operator >> (istream & is,TestCase &t);
 
@@ -245,7 +249,7 @@ void TestCase::doWork()
 		ret = PaintMaxCandidate();
 	}
 	imshow("Wall", painted);
-	waitKey(0);
+	// waitKey(0);
 	Erase();
 
 	if(countNonZero(painted != wall) != 0)
@@ -255,7 +259,7 @@ void TestCase::doWork()
 		result.clear();
 	}
 	imshow("Wall", painted);
-	waitKey(0);
+	// waitKey(0);
 }
 
 /// Write the result to file
@@ -299,8 +303,6 @@ int main(int argc, char **argv){
 	string filename(argv[1]);
 
 	// open in and out files
-	ifstream fin;
-	fin.open (filename.c_str());
 
 	string dirname = "out_" + timeStamp() + '/';
 	stringstream cmd;
@@ -312,19 +314,27 @@ int main(int argc, char **argv){
 	}
 
 	
+#ifndef MULTI_INPUT // Multiple problems in single file: e.g. google code jam
 	// Some parameter to vary for optimization
-	vector<int> ks({4}); // {0 , 1, 4, 9, 16, 25, 36, 49}); //TODO fix
+	vector<int> ks({0 , 1, 4, 9, 16, 25, 36, 49});
 	int gN = ks.size();
-	
+#else
+	ifstream fin;
+	fin.open (filename.c_str());
 	// read params
-	// fin>>gN;
+	fin>>gN;
 
 	// HACK for getline
 	// string a;
 	// getline(fin,a);
+#endif
 
 	TestCase *tptr;
 	for(int i=0;i<gN;i++){
+#ifndef MULTI_INPUT
+		ifstream fin;
+		fin.open (filename.c_str());
+#endif
 		tptr = new TestCase(ks.at(i));
 		fin >> *tptr;
 		tarr.push_back(tptr);
