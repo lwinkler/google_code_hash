@@ -1,5 +1,6 @@
 
 #include "utils.hpp"
+#include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
@@ -28,14 +29,14 @@ class TestCase{
 		Mat painted;
 		vector<string> result;
 
-		void SelectCandidates();
+		void SelectCandidates(const Rect& bounds, list<Candidate>& candidates) const;
 		bool PaintMaxCandidate();
 		void Erase();
-		inline int  Rate1(Candidate& can){return countNonZero(wall(can.rect) & (painted(can.rect) == 0));}
+		inline int  Rate1(Candidate& can) const {return countNonZero(wall(can.rect) & (painted(can.rect) == 0));}
 		// inline int  Rate2(Candidate& can){return countNonZero(wall(can.rect) == 0);}
 
 		// Our heuristic
-		inline int  Rate(Candidate& can){
+		inline int  Rate(Candidate& can) const {
 			int val = Rate1(can); 
 			if(val == 0) 
 				return INT_MIN; 
@@ -63,15 +64,15 @@ class TestCase{
 		list<Candidate> candidates;
 };
 
-void TestCase::SelectCandidates()
+void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates) const
 {
-	Rect rect_mat(0, 0, wall.cols, wall.rows);
-	for(int s = (min(wall.rows, wall.cols) - 1) / 2 ; s >= 0 ; s--)
+	candidates.clear();
+	for(int s = (min(bounds.width, bounds.height) - 1) / 2 ; s >= 0 ; s--)
 	{
-		cout << "s" << s << endl;
-		for(int i = 0 + s ; i < wall.rows - s; i++)
+		// cout << "s" << s << endl;
+		for(int i = bounds.y + s ; i < bounds.y + bounds.height - s; i++)
 		{
-			for(int j = 0 + s ; j < wall.cols - s; j++)
+			for(int j = bounds.x + s ; j < bounds.x + bounds.width - s; j++)
 			{
 				Candidate can;
 				can.rect = Rect(Point2i(j-s,i-s), Point2i(j+s + 1, i+s + 1));
@@ -79,9 +80,9 @@ void TestCase::SelectCandidates()
 				if(Rate(can) > 0)
 				{
 					stringstream ss;
-					ss << "PAINT_SQUARE " << i - 1 << " " << j - 1 << " " << s;
+					ss << "PAINT_SQUARE " << i << " " << j << " " << s;
 					can.command = ss.str();
-					// assert((can.rect & rect_mat) == can.rect);
+					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
 				}
 			}
@@ -90,13 +91,14 @@ void TestCase::SelectCandidates()
 
 	cout << "Candidates sq " << candidates.size() << endl;
 
-	for (int r = 0; r < wall.rows; r++)
+	// horiz
+	for (int r = bounds.y ; r < bounds.y + bounds.height; r++)
 	{
-		cout << "r" << r << endl;
-		for (int c = 0; c < wall.cols; c++)
+		// cout << "r" << r << endl;
+		for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 		{
 			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
-			for (int l = 2; l < wall.cols - c; l++)
+			for (int l = 2; l < bounds.width - c; l++)
 			{
 				Candidate can;
 				can.rect = rect;
@@ -104,9 +106,10 @@ void TestCase::SelectCandidates()
 				if(Rate(can) > 0)
 				{
 					stringstream ss;
-					ss << "PAINT_LINE " << r << " " << c << " " << r + l << " " << c;
+					assert(c+l < bounds.x + bounds.width);
+					ss << "PAINT_LINE " << r << " " << c << " " << r << " " << c + l;
 					can.command = ss.str();
-					// assert((can.rect & rect_mat) == can.rect);
+					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
 				}
 				rect.width++;
@@ -116,13 +119,13 @@ void TestCase::SelectCandidates()
 
 	cout << "Candidates sq+li " << candidates.size() << endl;
 
-	for (int r = 0; r < wall.rows; r++)
+	for (int r = bounds.y; r < bounds.y + bounds.height; r++)
 	{
-		cout << "r" << r << endl;
-		for (int c = 0; c < wall.cols; c++)
+		// cout << "r" << r << endl;
+		for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 		{
 			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
-			for (int l = 2; l < wall.rows - r; l++)
+			for (int l = 2; l < bounds.height - r; l++)
 			{
 				Candidate can;
 				can.rect = rect;
@@ -130,9 +133,9 @@ void TestCase::SelectCandidates()
 				if(Rate(can) > 0)
 				{
 					stringstream ss;
-					ss << "PAINT_LINE " << r << " " << c << " " << r << " " << c + l;
+					ss << "PAINT_LINE " << r << " " << c << " " << r + l << " " << c;
 					can.command = ss.str();
-					// assert((can.rect & rect_mat) == can.rect);
+					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
 				}
 				rect.height++;
@@ -194,8 +197,14 @@ void TestCase::Erase()
 				*ppaint = 0;
 				result.push_back(ss.str());
 			}
+			/*
 			else if(*pwall > 0 && *ppaint == 0)
-				cout << "ERROR " << r << " " << c;
+			{
+				assert(false);
+				cout << "ERROR " << r << " " << c << " : " << *pwall * 1.0 << "!=" << *ppaint * 1.0 << endl;
+			}
+			assert(*pwall == *ppaint);
+			*/
 			pwall++;
 			ppaint++;
 		}
@@ -227,6 +236,70 @@ void paintSquares(Mat& wall, Mat& painted, int s, int maxBlack, vector<string>& 
 }
 */
 
+bool check(Mat& image, const vector<string>& result)
+{
+	Mat paint(image.size(), image.type());
+	paint.setTo(0);
+	for(auto& elem : result)
+	{
+		istringstream ss(elem);
+		string cmd;
+		ss >> cmd;
+		cout << elem << endl;
+		Point p1, p2;
+		if(cmd == "PAINT_SQUARE")
+		{
+			Rect r;
+			ss >> r.y;
+			ss >> r.x;
+			ss >> r.width;
+			r.x -= r.width;
+			r.y -= r.width;
+			r.width*=2;
+			r.width+=1;
+			r.height=r.width;
+			cout << r << endl;
+			paint(r).setTo(255);
+		}
+		else if(cmd == "PAINT_LINE")
+		{
+			Rect r;
+			ss >> r.y;
+			ss >> r.x;
+			ss >> r.height;
+			ss >> r.width;
+			r.height -= r.y;
+			r.width -= r.x;
+			r.height += 1;
+			r.width += 1;
+			paint(r).setTo(255);
+		}
+		else if(cmd == "ERASE_CELL")
+		{
+			Point r;
+			ss >> r.y;
+			ss >> r.x;
+			paint.at<uchar>(r.y, r.x) = 0;
+		}
+		else 
+		{
+			cout << "Unexpected cmd " << cmd << endl;
+			exit(1);
+		}
+	}
+	imshow("result", paint);
+	cout << countNonZero(paint != image) << endl;
+	imshow("diff", paint - image);
+	if(countNonZero(paint != image))
+	{
+		Mat diff;
+		absdiff(paint, image, diff);
+		cout << diff << endl;
+		waitKey(0);
+	}
+	return countNonZero(paint != image) == 0;
+}
+
 /// Implement here the main work of the test case
 void TestCase::doWork()
 {
@@ -242,11 +315,27 @@ void TestCase::doWork()
 	*/
 	namedWindow( "Wall", WINDOW_AUTOSIZE );
 
-	SelectCandidates(); // TODO: Segment to optimize greatly
-	bool ret = true;
-	while(ret)
+	vector<vector<Point> > contours;
+	vector<Vec4i> hierarchy;
+
+	/// Detect edges using Threshold
+	// threshold(m_input, threshold_output, thresh, 255, THRESH_BINARY);
+	/// Find contours
+	Mat copy;
+	wall.copyTo(copy);
+	// findContours(copy, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+
+	// for(unsigned int i = 0; i< contours.size(); i++)
 	{
-		ret = PaintMaxCandidate();
+		// For each contour
+		// Rect rect(boundingRect(contours[i]);
+		Rect rect(0,0,wall.cols,wall.rows);
+		SelectCandidates(rect, candidates);
+		bool ret = true;
+		while(ret)
+		{
+			ret = PaintMaxCandidate();
+		}
 	}
 	imshow("Wall", painted);
 	// waitKey(0);
@@ -254,12 +343,23 @@ void TestCase::doWork()
 
 	if(countNonZero(painted != wall) != 0)
 	{
-		cout << "ERROR: Non identical" << endl;
-		cout << (painted != wall) << endl;
+		cout << "ERROR: Non identical " << countNonZero(painted != wall) << endl;
+		imshow("Wall", painted != wall);
+		// waitKey(0);
+		// cout << (painted != wall) << endl;
 		result.clear();
 	}
-	imshow("Wall", painted);
+	imshow("Painted", painted);
 	// waitKey(0);
+
+	if(!check(wall, result))
+	{
+		cout << "ERROR" << endl;
+		imshow("Wall", wall);
+		waitKey(0);
+		exit(1);
+	}
+
 }
 
 /// Write the result to file
@@ -306,7 +406,7 @@ int main(int argc, char **argv){
 
 	string dirname = "out_" + timeStamp() + '/';
 	stringstream cmd;
-	cmd << "mkdir -p " << dirname << " && rm out_latest && ln -s " << dirname << " out_latest";
+	cmd << "mkdir -p " << dirname << " && rm -f out_latest && ln -s " << dirname << " out_latest";
 	if(system(cmd.str().c_str()) != 0)
 	{
 		cout << "error while making " << dirname << endl;
