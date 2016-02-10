@@ -39,15 +39,18 @@ class TestCase{
 			int val = Rate1(can); 
 			if(val == 0) 
 				return INT_MIN; 
-			else return val - 100 * countNonZero(wall(can.rect) == 0);
+			else return val - K * countNonZero(wall(can.rect) == 0);
 		}
 
+		// Params for optimization
+		const int K;
+
 	public:
-		TestCase() {}
+		TestCase(int k) : K(k) {}
 		~TestCase(){};
 		void doWork();
 		// Used to name the result file
-		string OutputFileName(){return to_string(result.size());}
+		string OutputFileName(){return to_string(result.size()) + ".K=" + to_string(K);}
 		friend ostream & operator << (ostream & os,TestCase &t);
 		friend istream & operator >> (istream & is,TestCase &t);
 
@@ -164,11 +167,37 @@ bool TestCase::PaintMaxCandidate()
 		return false;
 
 	painted(itmax->rect).setTo(255);
+	result.push_back(itmax->command);
 	candidates.erase(itmax);
 	return true;
 }
 
-void TestCase::Erase(){}
+/// Create erase commands
+void TestCase::Erase()
+{
+	assert(wall.size() == painted.size());
+	uchar* pwall = wall.data;
+	uchar* ppaint = painted.data;
+	for (int r = 0; r < wall.rows; r++)
+	{
+		for (int c = 0; c < wall.cols; c++)
+		{
+			// cout << *pwall * 1.0 << *ppaint * 1.0 << endl;
+			if(*pwall == 0 && *ppaint > 0)
+			{
+				stringstream ss;
+				ss << "ERASE_CELL " << r << " " << c;
+				*ppaint = 0;
+				result.push_back(ss.str());
+			}
+			else if(*pwall > 0 && *ppaint == 0)
+				cout << "ERROR " << r << " " << c;
+			pwall++;
+			ppaint++;
+		}
+	}
+	
+}
 
 /*
 void paintSquares(Mat& wall, Mat& painted, int s, int maxBlack, vector<string>& result, vector<string>& result2)
@@ -214,10 +243,19 @@ void TestCase::doWork()
 	while(ret)
 	{
 		ret = PaintMaxCandidate();
-		imshow("Wall", painted);
-		waitKey(0);
 	}
+	imshow("Wall", painted);
+	waitKey(0);
 	Erase();
+
+	if(countNonZero(painted != wall) != 0)
+	{
+		cout << "ERROR: Non identical" << endl;
+		cout << (painted != wall) << endl;
+		result.clear();
+	}
+	imshow("Wall", painted);
+	waitKey(0);
 }
 
 /// Write the result to file
@@ -274,8 +312,9 @@ int main(int argc, char **argv){
 	}
 
 	
-
-	int gN = 1;
+	// Some parameter to vary for optimization
+	vector<int> ks({4}); // {0 , 1, 4, 9, 16, 25, 36, 49}); //TODO fix
+	int gN = ks.size();
 	
 	// read params
 	// fin>>gN;
@@ -286,7 +325,7 @@ int main(int argc, char **argv){
 
 	TestCase *tptr;
 	for(int i=0;i<gN;i++){
-		tptr = new TestCase();
+		tptr = new TestCase(ks.at(i));
 		fin >> *tptr;
 		tarr.push_back(tptr);
 	}
