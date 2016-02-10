@@ -15,6 +15,55 @@ struct Candidate
 	Rect   rect;
 };
 
+struct gPoint
+{
+	gPoint(){}
+	gPoint(const Point _p) : c(_p.x), r(_p.y) {}
+	int c = 0;
+	int r = 0;
+	bool operator == (const gPoint& p){return r == p.r && c == p.c;}
+	inline friend std::istream& operator>> (std::istream& is, gPoint& p) {is >> p.r; is >> p.c;}
+	inline friend std::ostream& operator<< (std::ostream& os, const gPoint& p) {os << p.r << " " << p.c;}
+	Point toPoint(){
+		return Point(c, r);
+	}
+};
+
+struct gLine
+{
+	gLine(){}
+	gLine(const gPoint& _p1, const gPoint _p2) : p1(_p1), p2(_p2){}
+	gLine(const Rect& _r) : p1(_r.tl()), p2(_r.br()){}
+	gPoint p1;
+	gPoint p2;
+	Rect toRect(){
+		return Rect(p1.toPoint(), p2.toPoint());
+	}
+	bool operator == (const gLine& li){return p1 == li.p1 && p2 == li.p2;}
+	inline friend std::istream& operator>> (std::istream& is, gLine& li) {is >> li.p1; is >> li.p2;}
+	inline friend std::ostream& operator<< (std::ostream& os, const gLine& li) {os << li.p1.r << " " << li.p1.c << " " << li.p2.r << " " << li.p2.c;}
+};
+
+struct gSquare
+{
+	gSquare(){}
+	gSquare(const Rect& _r){
+		assert(_r.width == _r.height);
+		s = (_r.width - 1) / 2;
+		c = _r.x + s; 
+		r = _r.y + s;
+	}
+	int r = 0;
+	int c = 0;
+	int s = 0;
+	Rect toRect(){
+		return Rect(c - s, r - s, s * 2 + 1, s * 2 + 1);
+	}
+	bool operator == (const gSquare& sq){return r == sq.r && c == sq.c && s == sq.s;}
+	inline friend std::istream& operator>> (std::istream& is, gSquare& sq) {is >> sq.r; is >> sq.c; is >> sq.s;}
+	inline friend std::ostream& operator<< (std::ostream& os, const gSquare& sq) {os << sq << " " << sq << " " << sq.s;}
+};
+
 
 /// Class representing our main test case
 class TestCase{
@@ -80,7 +129,12 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 				if(Rate(can) > 0)
 				{
 					stringstream ss;
-					ss << "PAINT_SQUARE " << i << " " << j << " " << s;
+					gSquare sq(can.rect);
+					// cout << can.rect << endl;
+					// cout << sq.r << sq.c << sq.s << endl;
+					// cout << sq.toRect() << endl;
+					assert(can.rect == sq.toRect());
+					ss << "PAINT_SQUARE " << sq.r << " " << sq.c << " " << sq.s;
 					can.command = ss.str();
 					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
@@ -105,9 +159,11 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 
 				if(Rate(can) > 0)
 				{
-					stringstream ss;
+					gLine li(rect);
+					assert(li.toRect() == rect);
 					assert(c+l < bounds.x + bounds.width);
-					ss << "PAINT_LINE " << r << " " << c << " " << r << " " << c + l;
+					stringstream ss;
+					ss << "PAINT_LINE " << li;
 					can.command = ss.str();
 					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
@@ -133,7 +189,8 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 				if(Rate(can) > 0)
 				{
 					stringstream ss;
-					ss << "PAINT_LINE " << r << " " << c << " " << r + l << " " << c;
+					gLine li(rect);
+					ss << "PAINT_LINE " << li;
 					can.command = ss.str();
 					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
@@ -249,37 +306,21 @@ bool check(Mat& image, const vector<string>& result)
 		Point p1, p2;
 		if(cmd == "PAINT_SQUARE")
 		{
-			Rect r;
-			ss >> r.y;
-			ss >> r.x;
-			ss >> r.width;
-			r.x -= r.width;
-			r.y -= r.width;
-			r.width*=2;
-			r.width+=1;
-			r.height=r.width;
-			cout << r << endl;
-			paint(r).setTo(255);
+			gSquare sq;
+			ss >> sq;
+			paint(sq.toRect()).setTo(255);
 		}
 		else if(cmd == "PAINT_LINE")
 		{
-			Rect r;
-			ss >> r.y;
-			ss >> r.x;
-			ss >> r.height;
-			ss >> r.width;
-			r.height -= r.y;
-			r.width -= r.x;
-			r.height += 1;
-			r.width += 1;
-			paint(r).setTo(255);
+			gLine li;
+			ss >> li;
+			paint(li.toRect()).setTo(255);
 		}
 		else if(cmd == "ERASE_CELL")
 		{
-			Point r;
-			ss >> r.y;
-			ss >> r.x;
-			paint.at<uchar>(r.y, r.x) = 0;
+			gPoint p;
+			ss >> p;
+			paint.at<uchar>(p.r, p.c) = 0;
 		}
 		else 
 		{
@@ -287,9 +328,9 @@ bool check(Mat& image, const vector<string>& result)
 			exit(1);
 		}
 	}
-	imshow("result", paint);
-	cout << countNonZero(paint != image) << endl;
-	imshow("diff", paint - image);
+	// imshow("result", paint);
+	// cout << countNonZero(paint != image) << endl;
+	// imshow("diff", paint - image);
 	if(countNonZero(paint != image))
 	{
 		Mat diff;
