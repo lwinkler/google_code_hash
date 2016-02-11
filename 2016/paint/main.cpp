@@ -9,6 +9,12 @@
 using namespace cv;
 using namespace boost;
 
+#if 1 // debug or not
+#define imshow(a,b)
+#define waitKey(a)
+#endif
+
+
 struct Candidate
 {
 	string command;
@@ -146,56 +152,83 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 	cout << "Candidates sq " << candidates.size() << endl;
 
 	// horiz
+	uchar* pwall = wall.data;
 	for (int r = bounds.y ; r < bounds.y + bounds.height; r++)
 	{
+		vector<Point2i> start;
+		vector<Point2i> finish;
 		// cout << "r" << r << endl;
+
 		for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 		{
-			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
-			for (int l = 2; l < bounds.width - c; l++)
+			if((c == 0 || *(pwall-1) == 0 ) && *pwall== 255)
+				start.emplace_back(c,r);
+			if((c == wall.cols - 1 || *(pwall+1) == 0 ) && *pwall== 255)
+				finish.emplace_back(c + 1,r + 1);
+			pwall++;
+		}
+		// cout << "sizes " << finish.size() << "  " << start.size() << endl;
+
+		for(const auto& estart : start)
+		{
+			for(const auto& efinish : finish)
 			{
+				if(efinish.x <= estart.x)
+					continue;
+
 				Candidate can;
-				can.rect = rect;
+				can.rect = Rect(estart, efinish);
 
 				if(Rate(can) > 0)
 				{
-					gLine li(rect);
-					assert(li.toRect() == rect);
-					assert(c+l < bounds.x + bounds.width);
+					gLine li(can.rect);
+					assert(li.toRect() == can.rect);
 					stringstream ss;
 					ss << "PAINT_LINE " << li;
 					can.command = ss.str();
 					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
 				}
-				rect.width++;
 			}
 		}
 	}
 
 	cout << "Candidates sq+li " << candidates.size() << endl;
 
-	for (int r = bounds.y; r < bounds.y + bounds.height; r++)
+	pwall = wall.data;
+	for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 	{
 		// cout << "r" << r << endl;
-		for (int c = bounds.x; c < bounds.x + bounds.width; c++)
+		vector<Point2i> start;
+		vector<Point2i> finish;
+		// cout << "r" << r << endl;
+		for (int r = bounds.y; r < bounds.y + bounds.height; r++)
 		{
-			Rect rect = Rect(Point2i(c,r), Point2i(c+1,r + 1));
-			for (int l = 2; l < bounds.height - r; l++)
+			if((r == 0 || *(pwall-wall.cols) == 0 ) && *pwall== 255)
+				start.emplace_back(c,r);
+			if((r == wall.rows - 1 || *(pwall+wall.cols) == 0 ) && *pwall== 255)
+				finish.emplace_back(c + 1,r + 1);
+			pwall++;
+		}
+
+		for(const auto& estart : start)
+		{
+			for(const auto& efinish : finish)
 			{
+				if(efinish.y <= estart.y)
+					continue;
 				Candidate can;
-				can.rect = rect;
+				can.rect = Rect(estart, efinish);
 
 				if(Rate(can) > 0)
 				{
+					gLine li(can.rect);
 					stringstream ss;
-					gLine li(rect);
 					ss << "PAINT_LINE " << li;
 					can.command = ss.str();
 					// assert((can.rect & bounds) == can.rect);
 					candidates.push_back(can);
 				}
-				rect.height++;
 			}
 		}
 	}
@@ -336,7 +369,7 @@ bool check(Mat& image, const vector<string>& result)
 		Mat diff;
 		absdiff(paint, image, diff);
 		cout << diff << endl;
-		waitKey(0);
+		// waitKey(0);
 	}
 	return countNonZero(paint != image) == 0;
 }
@@ -378,26 +411,26 @@ void TestCase::doWork()
 			ret = PaintMaxCandidate();
 		}
 	}
-	imshow("Wall", painted);
+	// imshow("Wall", painted);
 	// waitKey(0);
 	Erase();
 
 	if(countNonZero(painted != wall) != 0)
 	{
 		cout << "ERROR: Non identical " << countNonZero(painted != wall) << endl;
-		imshow("Wall", painted != wall);
+		// imshow("Wall", painted != wall);
 		// waitKey(0);
 		// cout << (painted != wall) << endl;
 		result.clear();
 	}
-	imshow("Painted", painted);
+	// imshow("Painted", painted);
 	// waitKey(0);
 
 	if(!check(wall, result))
 	{
 		cout << "ERROR" << endl;
-		imshow("Wall", wall);
-		waitKey(0);
+		// imshow("Wall", wall);
+		// waitKey(0);
 		exit(1);
 	}
 
@@ -457,7 +490,7 @@ int main(int argc, char **argv){
 	
 #ifndef MULTI_INPUT // Multiple problems in single file: e.g. google code jam
 	// Some parameter to vary for optimization
-	vector<int> ks({0 , 1, 4, 9, 16, 25, 36, 49});
+	vector<int> ks({1, 4, 9, 16, 25, 36, 49});
 	int gN = ks.size();
 #else
 	ifstream fin;
