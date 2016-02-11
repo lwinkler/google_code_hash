@@ -39,11 +39,11 @@ struct gLine
 {
 	gLine(){}
 	gLine(const gPoint& _p1, const gPoint _p2) : p1(_p1), p2(_p2){}
-	gLine(const Rect& _r) : p1(_r.tl()), p2(_r.br()){}
+	gLine(const Rect& _r) : p1(_r.tl()), p2(_r.br() - Point(1,1)){}
 	gPoint p1;
 	gPoint p2;
 	Rect toRect(){
-		return Rect(p1.toPoint(), p2.toPoint());
+		return Rect(p1.toPoint(), p2.toPoint() + Point(1,1));
 	}
 	bool operator == (const gLine& li){return p1 == li.p1 && p2 == li.p2;}
 	inline friend std::istream& operator>> (std::istream& is, gLine& li) {is >> li.p1; is >> li.p2;}
