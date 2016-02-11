@@ -9,7 +9,7 @@
 using namespace cv;
 using namespace boost;
 
-#if 1 // debug or not
+#if 0 // debug or not
 #define imshow(a,b)
 #define waitKey(a)
 #endif
@@ -84,17 +84,17 @@ class TestCase{
 		Mat painted;
 		vector<string> result;
 
-		void SelectCandidates(const Rect& bounds, list<Candidate>& candidates) const;
+		void SelectCandidates(const Rect& bounds, const Mat& image, list<Candidate>& candidates) const;
 		bool PaintMaxCandidate();
 		void Erase();
-		inline int  Rate1(Candidate& can) const {return countNonZero(wall(can.rect) & (painted(can.rect) == 0));}
-		// inline int  Rate2(Candidate& can){return countNonZero(wall(can.rect) == 0);}
+		static inline int  Rate1(Candidate& can, const Mat& wall, const Mat& painted) {return countNonZero(wall(can.rect) & (painted(can.rect) == 0));}
 
 		// Our heuristic
-		inline int  Rate(Candidate& can) const {
-			int val = Rate1(can); 
+		static inline int  Rate(Candidate& can, const Mat& wall, const Mat& painted, int K) {
+			int val = Rate1(can, wall, painted); 
 			if(val == 0) 
 				return INT_MIN; 
+			// else return 1000 * static_cast<double>(val) / (K + countNonZero(wall(can.rect) == 0) * val);
 			else return val - K * countNonZero(wall(can.rect) == 0);
 		}
 
@@ -119,7 +119,7 @@ class TestCase{
 		list<Candidate> candidates;
 };
 
-void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates) const
+void TestCase::SelectCandidates(const Rect& bounds, const Mat& image, list<Candidate>& candidates) const
 {
 	candidates.clear();
 	for(int s = (min(bounds.width, bounds.height) - 1) / 2 ; s >= 0 ; s--)
@@ -132,7 +132,7 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 				Candidate can;
 				can.rect = Rect(Point2i(j-s,i-s), Point2i(j+s + 1, i+s + 1));
 
-				if(Rate(can) > 0)
+				if(Rate(can, image, painted, K) > 0)
 				{
 					stringstream ss;
 					gSquare sq(can.rect);
@@ -152,7 +152,6 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 	cout << "Candidates sq " << candidates.size() << endl;
 
 	// horiz
-	uchar* pwall = wall.data;
 	for (int r = bounds.y ; r < bounds.y + bounds.height; r++)
 	{
 		vector<Point2i> start;
@@ -161,11 +160,11 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 
 		for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 		{
-			if((c == 0 || *(pwall-1) == 0 ) && *pwall== 255)
+			// if((c == 0 || *(pwall-1) == 0 ) && *pwall== 255)
+			if((c == bounds.x || image.at<uchar>(r,c-1) == 0 ) && image.at<uchar>(r,c)== 255)
 				start.emplace_back(c,r);
-			if((c == wall.cols - 1 || *(pwall+1) == 0 ) && *pwall== 255)
+			if((c == bounds.x + bounds.width - 1 || image.at<uchar>(r,c+1) == 0 ) && image.at<uchar>(r,c)== 255)
 				finish.emplace_back(c + 1,r + 1);
-			pwall++;
 		}
 		// cout << "sizes " << finish.size() << "  " << start.size() << endl;
 
@@ -179,7 +178,7 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 				Candidate can;
 				can.rect = Rect(estart, efinish);
 
-				if(Rate(can) > 0)
+				if(Rate(can, image, painted, K) > 0)
 				{
 					gLine li(can.rect);
 					assert(li.toRect() == can.rect);
@@ -195,7 +194,6 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 
 	cout << "Candidates sq+li " << candidates.size() << endl;
 
-	pwall = wall.data;
 	for (int c = bounds.x; c < bounds.x + bounds.width; c++)
 	{
 		// cout << "r" << r << endl;
@@ -204,11 +202,10 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 		// cout << "r" << r << endl;
 		for (int r = bounds.y; r < bounds.y + bounds.height; r++)
 		{
-			if((r == 0 || *(pwall-wall.cols) == 0 ) && *pwall== 255)
+			if((r == bounds.y || image.at<uchar>(r-1,c) == 0 ) && image.at<uchar>(r,c)== 255)
 				start.emplace_back(c,r);
-			if((r == wall.rows - 1 || *(pwall+wall.cols) == 0 ) && *pwall== 255)
+			if((r == bounds.y + bounds.height - 1 || image.at<uchar>(r+1,c) == 0 ) && image.at<uchar>(r,c)== 255)
 				finish.emplace_back(c + 1,r + 1);
-			pwall++;
 		}
 
 		for(const auto& estart : start)
@@ -220,7 +217,7 @@ void TestCase::SelectCandidates(const Rect& bounds, list<Candidate>& candidates)
 				Candidate can;
 				can.rect = Rect(estart, efinish);
 
-				if(Rate(can) > 0)
+				if(Rate(can, image, painted, K) > 0)
 				{
 					gLine li(can.rect);
 					stringstream ss;
@@ -244,7 +241,7 @@ bool TestCase::PaintMaxCandidate()
 	int max = INT_MIN;
 	while(it != candidates.end())
 	{
-		int score = Rate(*it);
+		int score = Rate(*it, wall, painted, K);
 		if(score == INT_MIN)
 		{
 			it = candidates.erase(it);
@@ -387,7 +384,7 @@ void TestCase::doWork()
 	}
 
 	*/
-	namedWindow( "Wall", WINDOW_AUTOSIZE );
+	// namedWindow( "Wall", WINDOW_AUTOSIZE );
 
 	vector<vector<Point> > contours;
 	vector<Vec4i> hierarchy;
@@ -395,31 +392,47 @@ void TestCase::doWork()
 	/// Detect edges using Threshold
 	// threshold(m_input, threshold_output, thresh, 255, THRESH_BINARY);
 	/// Find contours
-	Mat copy;
-	wall.copyTo(copy);
-	// findContours(copy, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+	Mat copy(Size(wall.cols + 2, wall.rows + 2), wall.type());
+	// dirty trick
+	copy.setTo(0);
+	Rect roi(1,1,wall.cols,wall.rows);
+	wall.copyTo(copy(roi));
+	findContours(copy, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(-1,-1));
 
-	// for(unsigned int i = 0; i< contours.size(); i++)
+	for(unsigned int i = 0; i< contours.size(); i++)
 	{
 		// For each contour
-		// Rect rect(boundingRect(contours[i]);
-		Rect rect(0,0,wall.cols,wall.rows);
-		SelectCandidates(rect, candidates);
+		Rect rect(boundingRect(contours[i]));
+		cout << "box " << rect << endl;
+		// mask image to avoid drawing cut shapes
+		Mat mask(wall.size(), wall.type());
+		mask.setTo(0);
+		drawContours(mask, contours, i, CV_RGB(255,255,255), CV_FILLED, 4);
+		// drawContours(mask, contours, i, CV_RGB(255,255,255),         1, 4, vector<Vec4i>(), 0, Point());
+		imshow("Mask", mask);
+		// waitKey(0);
+		mask &= wall;
+		mask &= (255 - painted);
+		imshow("Mask", mask);
+		 // waitKey(0);
+		SelectCandidates(rect, mask, candidates);
+		swap(wall, mask); // trick
 		bool ret = true;
 		while(ret)
 		{
 			ret = PaintMaxCandidate();
+			//imshow("Painted", painted);
+			//waitKey(0);
 		}
+		swap(wall, mask); // trick
 	}
-	// imshow("Wall", painted);
-	// waitKey(0);
 	Erase();
 
 	if(countNonZero(painted != wall) != 0)
 	{
 		cout << "ERROR: Non identical " << countNonZero(painted != wall) << endl;
-		// imshow("Wall", painted != wall);
-		// waitKey(0);
+		imshow("Difference", painted != wall);
+		waitKey(0);
 		// cout << (painted != wall) << endl;
 		result.clear();
 	}
