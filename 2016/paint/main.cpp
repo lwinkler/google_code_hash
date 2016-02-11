@@ -2,14 +2,14 @@
 #include "utils.hpp"
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
+// #include <opencv2/highgui/highgui.hpp>
 
-#include <boost/multi_array.hpp>
+//#include <boost/multi_array.hpp>
 
 using namespace cv;
-using namespace boost;
+//using namespace boost;
 
-#if 0 // debug or not
+#ifndef GDEBUG // debug or not
 #define imshow(a,b)
 #define waitKey(a)
 #endif
@@ -28,8 +28,8 @@ struct gPoint
 	int c = 0;
 	int r = 0;
 	bool operator == (const gPoint& p){return r == p.r && c == p.c;}
-	inline friend std::istream& operator>> (std::istream& is, gPoint& p) {is >> p.r; is >> p.c;}
-	inline friend std::ostream& operator<< (std::ostream& os, const gPoint& p) {os << p.r << " " << p.c;}
+	inline friend istream& operator>> (istream& is, gPoint& p) {is >> p.r; is >> p.c;}
+	inline friend ostream& operator<< (ostream& os, const gPoint& p) {os << p.r << " " << p.c;}
 	Point toPoint(){
 		return Point(c, r);
 	}
@@ -46,8 +46,8 @@ struct gLine
 		return Rect(p1.toPoint(), p2.toPoint() + Point(1,1));
 	}
 	bool operator == (const gLine& li){return p1 == li.p1 && p2 == li.p2;}
-	inline friend std::istream& operator>> (std::istream& is, gLine& li) {is >> li.p1; is >> li.p2;}
-	inline friend std::ostream& operator<< (std::ostream& os, const gLine& li) {os << li.p1.r << " " << li.p1.c << " " << li.p2.r << " " << li.p2.c;}
+	inline friend istream& operator>> (istream& is, gLine& li) {is >> li.p1; is >> li.p2;}
+	inline friend ostream& operator<< (ostream& os, const gLine& li) {os << li.p1.r << " " << li.p1.c << " " << li.p2.r << " " << li.p2.c;}
 };
 
 struct gSquare
@@ -66,8 +66,8 @@ struct gSquare
 		return Rect(c - s, r - s, s * 2 + 1, s * 2 + 1);
 	}
 	bool operator == (const gSquare& sq){return r == sq.r && c == sq.c && s == sq.s;}
-	inline friend std::istream& operator>> (std::istream& is, gSquare& sq) {is >> sq.r; is >> sq.c; is >> sq.s;}
-	inline friend std::ostream& operator<< (std::ostream& os, const gSquare& sq) {os << sq << " " << sq << " " << sq.s;}
+	inline friend istream& operator>> (istream& is, gSquare& sq) {is >> sq.r; is >> sq.c; is >> sq.s;}
+	inline friend ostream& operator<< (ostream& os, const gSquare& sq) {os << sq << " " << sq << " " << sq.s;}
 };
 
 
@@ -98,11 +98,14 @@ class TestCase{
 			else return val - K * countNonZero(wall(can.rect) == 0);
 		}
 
+		// Internal use
+		const int test_num;
+
 		// Params for optimization
 		const int K;
 
 	public:
-		TestCase(int k) : K(k) {}
+		TestCase(int _test_num, int _k) : test_num(_test_num), K(_k) {}
 		~TestCase(){};
 		void doWork();
 		// Used to name the result file
@@ -110,6 +113,18 @@ class TestCase{
 			stringstream ss;
 			ss << setfill('0') << setw(5) << result.size() << ".K=" << K;
 			return ss.str();
+		}
+		void WriteToFile(const string& inputFile, const string& directory)
+		{
+			ofstream fout;
+			stringstream ss;
+			ss << directory << inputFile << "." << OutputFileName() << ".out";
+			fout.open ( ss.str().c_str());
+#ifdef MULTI_INPUT
+			fout<< "Case #"<<(test_num + 1)<<": "<<*this<<endl;
+#else
+			fout<< *this << endl;
+#endif
 		}
 		friend ostream & operator << (ostream & os,TestCase &t);
 		friend istream & operator >> (istream & is,TestCase &t);
@@ -414,7 +429,7 @@ void TestCase::doWork()
 		mask &= wall;
 		mask &= (255 - painted);
 		imshow("Mask", mask);
-		 // waitKey(0);
+		waitKey(0);
 		SelectCandidates(rect, mask, candidates);
 		swap(wall, mask); // trick
 		bool ret = true;
@@ -522,52 +537,54 @@ int main(int argc, char **argv){
 		ifstream fin;
 		fin.open (filename.c_str());
 #endif
-		tptr = new TestCase(ks.at(i));
+		tptr = new TestCase(i, ks.at(i));
 		fin >> *tptr;
 		tarr.push_back(tptr);
 	}
 
-	int max_threads = std::thread::hardware_concurrency();
+	int max_threads = thread::hardware_concurrency();
 	if(argc > 2 && atoi(argv[2]) > 0)
 		max_threads =  atoi(argv[2]);
+#ifdef GDEBUG
+	max_threads = 1;
+#endif
 
 	if(max_threads > 1)
 	{
 		cout << "Create a pool of " << max_threads << " working threads" << endl;
-		std::vector< std::future<string> > results;
+		vector< future<string> > results;
 		ThreadPool pool(max_threads);
 
 		for(auto& elem : tarr)
 		{
 			results.emplace_back(
-				pool.enqueue([&elem]{
+				pool.enqueue([&elem,&filename,&dirname]{
 					cout << "starting job" << endl;
 					elem->doWork();
+#ifndef MULTI_INPUT
+					elem->WriteToFile(filename, dirname);
+#endif
 					stringstream ss;
-					ss<< /*"Case --> " <<*/ *elem <<endl;
+					ss << endl << "Found solution " << *elem <<endl;
 					return ss.str();
 				})
 			);
 		}
 
 		for(auto && result: results)
-			std::cout << result.get() << ' ';
+			cout << result.get() << ' ';
 	}
 
-	std::cout << std::endl;
-
 	// Write down results
-	int j = 0;
 	for(auto& elem : tarr)
 	{
 		if(max_threads <= 1)
+		{
 			elem->doWork();
-		ofstream fout;
-		stringstream ss;
-		ss << dirname << filename << "." << elem->OutputFileName() << ".out";
-		fout.open ( ss.str().c_str());
-		fout<< /*"Case #"<<(j+1)<<": "<<*/*elem<<endl;
-		j++;
+		}
+#ifdef MULTI_INPUT
+		elem->WriteToFile(filename, dirname);
+#endif
 	}
 }
 
