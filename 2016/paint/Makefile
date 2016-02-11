@@ -26,3 +26,6 @@ clean:
 
 distclean: clean
 	rm -rf out_*
+
+pack:
+	tar -cvzf src.tar.gz main.cpp Makefile utils.hpp

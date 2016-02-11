@@ -544,7 +544,7 @@ int main(int argc, char **argv){
 	
 #ifndef MULTI_INPUT // Multiple problems in single file: e.g. google code jam
 	// Some parameter to vary for optimization
-	vector<int> ks({1, 4, 9, 16, 25, 36, 49});
+	vector<int> ks({25, 36, 49, 64, 81, 100, 121, 144});
 	int gN = ks.size();
 #else
 	ifstream fin;
@@ -604,11 +604,13 @@ int main(int argc, char **argv){
 	// Write down results
 	for(auto& elem : tarr)
 	{
+#ifndef MULTI_INPUT
 		if(max_threads <= 1)
 		{
 			elem->doWork();
+			elem->WriteToFile(filename, dirname);
 		}
-#ifdef MULTI_INPUT
+#else
 		elem->WriteToFile(filename, dirname);
 #endif
 	}
