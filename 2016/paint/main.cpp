@@ -19,6 +19,7 @@ struct Candidate
 {
 	string command;
 	Rect   rect;
+	double counterScore = 0;
 };
 
 struct gPoint
@@ -82,6 +83,7 @@ class TestCase{
 		// multi_array<char, 2>* pwall = nullptr;
 		Mat wall;
 		Mat painted;
+		Mat counter; // counts how many candidate for each cell
 		vector<string> result;
 
 		void SelectCandidates(const Rect& bounds, const Mat& image, list<Candidate>& candidates) const;
@@ -95,7 +97,7 @@ class TestCase{
 			if(val == 0) 
 				return INT_MIN; 
 			// else return 1000 * static_cast<double>(val) / (K + countNonZero(wall(can.rect) == 0) * val);
-			else return val - K * countNonZero(wall(can.rect) == 0);
+			else return val - K * countNonZero(wall(can.rect) == 0); //  + can.counterScore;
 		}
 
 		// Internal use
@@ -253,7 +255,13 @@ bool TestCase::PaintMaxCandidate()
 	list<Candidate>::iterator itmax;
 	list<Candidate>::iterator it = candidates.begin();
 
+	for(auto& elem : candidates)
+	{
+		elem.counterScore = sum(counter(elem.rect))[0];
+	}
+
 	int max = INT_MIN;
+	int maxCounterScore = INT_MIN;
 	while(it != candidates.end())
 	{
 		int score = Rate(*it, wall, painted, K);
@@ -262,10 +270,21 @@ bool TestCase::PaintMaxCandidate()
 			it = candidates.erase(it);
 			continue;
 		}
-		if(score > max)
+		else if(score > max)
 		{
 			max = score;
+			maxCounterScore = it->counterScore;
 			itmax = it;
+		}
+		else if(score == max)
+		{
+			max = score;
+			// cout << "compare" << it->counterScore << " " << maxCounterScore << endl;
+			if(it->counterScore < maxCounterScore)
+			{
+				itmax = it;
+				maxCounterScore = it->counterScore;
+			}
 		}
 		it++;
 	}
@@ -391,6 +410,7 @@ void TestCase::doWork()
 {
 	painted = Mat(wall.size(), wall.type());
 	painted.setTo(0);
+	counter = Mat(wall.size(), CV_16UC1);
 
 	/*
 	for(int s = (min(painted.rows, painted.cols) - 1) / 2 ; s >= 0 ; s--)
@@ -431,6 +451,12 @@ void TestCase::doWork()
 		imshow("Mask", mask);
 		waitKey(0);
 		SelectCandidates(rect, mask, candidates);
+
+		counter.setTo(0);
+		for(auto& elem : candidates)
+		{
+			counter(elem.rect) += 1;
+		}
 		swap(wall, mask); // trick
 		bool ret = true;
 		while(ret)
